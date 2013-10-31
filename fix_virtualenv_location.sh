@@ -3,7 +3,7 @@
 # fix_virtualenv_location.sh
 #
 # Author: Gary M. Josack <gary@byoteki.com>
-# Repository: https://github.com/gmjosack/shell_scripts
+# Repository: https://github.com/gmjosack/scripts
 # License: MIT
 #
 # This is a simple script to clean up links and references in a

@@ -66,6 +66,11 @@ function abspath(){
 }
 
 
+function is_absolute(){
+    [[ "${1:0:1}" == "/" ]] && return 0 || return 1
+}
+
+
 function add_trailing_slash(){
     [[ "${1:(-1)}" == "/" ]] && echo "$1" || echo "$1/"
 }
@@ -81,25 +86,28 @@ function usage(){
     local prog=$(basename $0)
 
     [[ -n "$preamble" ]] && err "${preamble}\n"
-    echo "Usage: ${PROG} <old_name> <new_venv>"
-    echo "  <old_name> - The name of the old path where the virtualenv existed. This"
-    echo "               location does not need to exist."
-    echo "  <new_venv> - The path of the virtualenv where links should be repaired."
+    echo "Usage: ${PROG} <old_path> <new_path> <virtualenv>"
+    echo "  <old_path>   - The name of the old path where the virtualenv existed. This"
+    echo "                 location does not need to exist. Must be absolute."
+    echo "  <new_path>   - The name of the new path where the virtualenv will exist. This"
+    echo "                 location does not need to exist. Must be absolute."
+    echo "  <virtualenv> - The path of the virtualenv to modify."
 
     exit 1
 }
 
 
 function fix_bad_symlinks(){
-    local search_path="$1"
-    local old_name="$2"
+    local old_path="$1"
+    local new_path="$2"
+    local search_path="$3"
 
     info "Fixing symlinks..."
     for symlink in $(find "$search_path" -type l); do
         local value=$(readlink "${symlink}")
-        if [[ "$value" == *"$old_name"* ]]; then
+        if [[ "$value" == *"$old_path"* ]]; then
             info "Found $symlink pointing $value. Correcting..."
-            ln -sTf "${value/$old_name/$search_path}" "$symlink"
+            ln -sTf "${value/$old_path/$new_path}" "$symlink"
         fi
 
     done
@@ -110,46 +118,50 @@ function purge_pycs(){
     local search_path="$1"
 
     info "Purging the following *.pyc files..."
-    find "$search_path" -type f -name "*.pyc" -printf "\t%p\n" -exec rm -f {} \;
+    find -P "$search_path" -type f -name "*.pyc" -printf "\t%p\n" -exec rm -f {} \;
 }
 
 
 function rename_refs(){
-    local old_name=$(rm_trailing_slash "$1")
-    local search_path=$(rm_trailing_slash "$2")
+    local old_path=$(rm_trailing_slash "$1")
+    local new_path=$(rm_trailing_slash "$2")
+    local search_path=$(rm_trailing_slash "$3")
 
-    local old_pattern="${old_name}(/|\"|$|')"
-    local new_pattern="${search_path}(/|\"|$|')"
+    local old_pattern="${old_path}(/|\"|$|')"
+    local new_pattern="${new_path}(/|\"|$|')"
 
-    info "Replacing references of ${old_name} with ${search_path}..."
+    info "Replacing references of ${old_path} with ${new_path}..."
 
     for file in $(find -P "${search_path}" \! -type l -type f | xargs grep -El "$old_pattern" | xargs grep -lv "$new_pattern"); do
         [[ -L "$file" ]] && continue  # Ignore symlinks.
         info "Updating ${file}"
-        sed -i -e "s:${old_name}:${search_path}:g" "$file"
+        sed -i -e "s:${old_path}:${new_path}:g" "$file"
     done
 }
 
-
 function main(){
-    [[ "$#" -eq 2 ]] || usage "Invalid number of parameters."
+    [[ "$#" -eq 3 ]] || usage "Invalid number of parameters."
 
-    local old_name="$1"
-    local new_venv="$2"
+    local old_path="$1"
+    local new_path="$2"
+    local virtualenv="$3"
 
-    new_venv=$(abspath "$new_venv")
+    virtualenv=$(abspath "$virtualenv")
 
-    old_name=$(add_trailing_slash "$old_name")
-    new_venv=$(add_trailing_slash "$new_venv")
+    old_path=$(add_trailing_slash "$old_path")
+    new_path=$(add_trailing_slash "$new_path")
+    virtualenv=$(add_trailing_slash "$virtualenv")
 
     # Simple sanity checks that the path exists and
     # appears to be a virtual env.
-    [[ -d "$new_venv" ]] || usage "No such directory: ${new_venv}"
-    [[ -f "$new_venv/bin/activate" ]] || usage "Doesn't appear to be a virtualenv: ${new_venv}"
+    is_absolute "$old_path" || usage "$old_path is not absolute."
+    is_absolute "$new_path" || usage "$new_path is not absolute."
+    [[ -d "$virtualenv" ]] || usage "No such directory: ${virtualenv}"
+    [[ -f "$virtualenv/bin/activate" ]] || usage "Doesn't appear to be a virtualenv: ${virtualenv}"
 
-    fix_bad_symlinks "$new_venv" "$old_name"
-    purge_pycs "$new_venv"
-    rename_refs "$old_name" "$new_venv"
+    fix_bad_symlinks "$old_path" "$new_path" "$virtualenv"
+    purge_pycs "$virtualenv"
+    rename_refs "$old_path" "$new_path" "$virtualenv"
 
 }
 main "$@"

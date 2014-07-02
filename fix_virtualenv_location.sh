@@ -134,6 +134,7 @@ function rename_refs(){
 
     for file in $(find -P "${search_path}" \! -type l -type f | xargs grep -El "$old_pattern" | xargs grep -lv "$new_pattern"); do
         [[ -L "$file" ]] && continue  # Ignore symlinks.
+        file -b "$file" | grep -vq ASCII && continue  # Skip non-ascii files.
         info "Updating ${file}"
         sed -i -e "s:${old_path}:${new_path}:g" "$file"
     done
